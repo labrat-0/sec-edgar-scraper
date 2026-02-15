@@ -1,60 +1,11 @@
 {
-    "actorSpecification": 1,
-    "fields": {},
-    "views": {
-        "models": {
-            "title": "Models",
-            "transformation": {
-                "fields": [
-                    "type",
-                    "modelId",
-                    "pipelineTag",
-                    "downloads",
-                    "likes",
-                    "library",
-                    "lastModified",
-                    "url"
-                ]
-            },
-            "display": {
-                "component": "table",
-                "properties": {
-                    "type": { "label": "Type", "format": "text" },
-                    "modelId": { "label": "Model ID", "format": "text" },
-                    "pipelineTag": { "label": "Task", "format": "text" },
-                    "downloads": { "label": "Downloads", "format": "number" },
-                    "likes": { "label": "Likes", "format": "number" },
-                    "library": { "label": "Library", "format": "text" },
-                    "lastModified": { "label": "Last Modified", "format": "text" },
-                    "url": { "label": "URL", "format": "link" }
-                }
-            }
-        },
-        "papers": {
-            "title": "Papers",
-            "transformation": {
-                "fields": [
-                    "type",
-                    "title",
-                    "authors",
-                    "publishedDate",
-                    "categories",
-                    "upvotes",
-                    "url"
-                ]
-            },
-            "display": {
-                "component": "table",
-                "properties": {
-                    "type": { "label": "Type", "format": "text" },
-                    "title": { "label": "Title", "format": "text" },
-                    "authors": { "label": "Authors", "format": "text" },
-                    "publishedDate": { "label": "Published", "format": "text" },
-                    "categories": { "label": "Categories", "format": "text" },
-                    "upvotes": { "label": "Upvotes", "format": "number" },
-                    "url": { "label": "URL", "format": "link" }
-                }
-            }
+    "title": "SEC EDGAR Entity Resolver Dataset",
+    "description": "Dataset items emitted by the actor.",
+    "type": "object",
+    "properties": {
+        "type": {
+            "type": "string",
+            "enum": ["entity", "filing", "fact"]
         }
     }
 }

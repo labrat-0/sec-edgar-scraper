@@ -1,376 +1,345 @@
-"""Core scraping logic for AI/ML Intelligence Scraper.
-
-All 3 modes: search_models (HuggingFace), search_papers (arXiv), trending_papers (HuggingFace Daily Papers).
-"""
-
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncIterator
+from typing import Any, AsyncGenerator
 
 import httpx
 
-from .models import (
-    ScraperInput,
-    ScrapingMode,
-    format_arxiv_paper,
-    format_hf_paper,
-    format_model,
-)
+from .models import EntityProfile, FactRecord, FilingRecord, ScraperInput, TickerRecord
 from .utils import (
-    ARXIV_API_URL,
-    HUGGINGFACE_DAILY_PAPERS_URL,
-    HUGGINGFACE_MODELS_URL,
+    COMPANY_FACTS_URL,
+    COMPANY_TICKERS_URL,
+    EFTS_SEARCH_URL,
+    SUBMISSIONS_URL,
     RateLimiter,
+    build_filing_url,
+    build_headers,
+    build_primary_doc_url,
     fetch_json,
-    fetch_xml,
 )
 
 logger = logging.getLogger(__name__)
 
-# HuggingFace API doesn't document a strict max, but 100 per page is safe
-HF_PAGE_SIZE = 100
 
-# arXiv API max results per request
-ARXIV_PAGE_SIZE = 200
+class TickerCache:
+    def __init__(self) -> None:
+        self.loaded = False
+        self.by_ticker: dict[str, TickerRecord] = {}
+        self.by_cik: dict[str, list[TickerRecord]] = {}
+
+    async def ensure(self, client: httpx.AsyncClient, headers: dict[str, str], rate_limiter: RateLimiter, timeout: float, retries: int) -> None:
+        if self.loaded:
+            return
+        data = await fetch_json(
+            client,
+            "GET",
+            COMPANY_TICKERS_URL,
+            rate_limiter,
+            headers,
+            max_retries=retries,
+            timeout=timeout,
+        )
+        if not data:
+            logger.warning("Failed to load company_tickers.json; ticker resolution may be limited.")
+            self.loaded = True
+            return
+        for _, record in data.items():
+            cik_str = str(record.get("cik_str", "")).zfill(10)
+            ticker = str(record.get("ticker", "")).upper()
+            title = str(record.get("title", ""))
+            if not ticker:
+                continue
+            t = TickerRecord(cik_str=cik_str, ticker=ticker, title=title)
+            self.by_ticker[ticker] = t
+            self.by_cik.setdefault(cik_str, []).append(t)
+        self.loaded = True
 
 
-class AiMlScraper:
-    """Scrapes AI/ML data from HuggingFace Hub and arXiv APIs."""
-
+class EdgarScraper:
     def __init__(
         self,
         client: httpx.AsyncClient,
         rate_limiter: RateLimiter,
         config: ScraperInput,
+        user_agent: str | None = None,
     ) -> None:
         self.client = client
         self.rate_limiter = rate_limiter
         self.config = config
+        self.headers = build_headers(user_agent)
+        self.tickers = TickerCache()
+        self.timeout = float(config.timeout_secs)
+        self.retries = int(config.max_retries)
 
-    async def scrape(self) -> AsyncIterator[dict[str, Any]]:
-        """Main entry point -- dispatches to the correct mode."""
-        mode = self.config.mode
-
-        if mode == ScrapingMode.SEARCH_MODELS:
-            async for item in self._search_models():
+    async def scrape(self) -> AsyncGenerator[dict[str, Any], None]:
+        if self.config.mode.value == "resolve_entity":
+            async for item in self._resolve_entity():
                 yield item
-        elif mode == ScrapingMode.SEARCH_PAPERS:
-            async for item in self._search_papers():
+        elif self.config.mode.value == "search_filings":
+            async for item in self._search_filings():
                 yield item
-        elif mode == ScrapingMode.TRENDING_PAPERS:
-            async for item in self._trending_papers():
-                yield item
-
-    # --- Mode 1: Search Models (HuggingFace) ---
-
-    async def _search_models(self) -> AsyncIterator[dict[str, Any]]:
-        """Search HuggingFace Hub models by keyword, task, framework, etc."""
-        logger.info(f"Searching HuggingFace models: '{self.config.query}'")
-
-        total_yielded = 0
-        consecutive_empty = 0
-
-        # HuggingFace uses cursor-based pagination via the Link header,
-        # but also supports simple offset pagination with the `offset` param.
-        # We'll use offset for simplicity (same pattern as gov-contracts).
-        offset = 0
-
-        while total_yielded < self.config.max_results:
-            page_size = min(
-                HF_PAGE_SIZE,
-                self.config.max_results - total_yielded,
-            )
-
-            params = self._build_model_params(page_size, offset)
-
-            data = await fetch_json(
-                self.client,
-                HUGGINGFACE_MODELS_URL,
-                self.rate_limiter,
-                params,
-            )
-
-            if not data or not isinstance(data, list):
-                consecutive_empty += 1
-                if consecutive_empty >= 2:
-                    logger.info("No more model results from HuggingFace")
-                    break
-                offset += page_size
-                continue
-
-            if len(data) == 0:
-                consecutive_empty += 1
-                if consecutive_empty >= 2:
-                    logger.info("No more model results from HuggingFace")
-                    break
-                offset += page_size
-                continue
-
-            consecutive_empty = 0
-
-            for model_data in data:
-                yield format_model(model_data)
-                total_yielded += 1
-                if total_yielded >= self.config.max_results:
-                    break
-
-            logger.info(f"Fetched {total_yielded} models so far")
-
-            # If we got fewer results than requested, we've hit the end
-            if len(data) < page_size:
-                break
-
-            offset += len(data)
-
-    def _build_model_params(
-        self, limit: int, offset: int
-    ) -> dict[str, Any]:
-        """Build query parameters for HuggingFace models API."""
-        params: dict[str, Any] = {
-            "limit": limit,
-            "offset": offset,
-        }
-
-        if self.config.query:
-            params["search"] = self.config.query
-
-        # Sort mapping
-        sort = self.config.sort
-        if sort == "downloads":
-            params["sort"] = "downloads"
-            params["direction"] = "-1"
-        elif sort == "likes":
-            params["sort"] = "likes"
-            params["direction"] = "-1"
-        elif sort == "trending":
-            params["sort"] = "trendingScore"
-            params["direction"] = "-1"
         else:
-            # Default to downloads
-            params["sort"] = "downloads"
-            params["direction"] = "-1"
+            async for item in self._get_company_facts():
+                yield item
 
-        if self.config.pipeline_tag:
-            params["pipeline_tag"] = self.config.pipeline_tag
+    async def _resolve_to_cik(self) -> tuple[str | None, str | None]:
+        # Attempt order: explicit CIK > ticker cache > EFTS search by name
+        if self.config.cik:
+            return self.config.cik, None
 
-        if self.config.library_filter:
-            params["library"] = self.config.library_filter
-
-        return params
-
-    # --- Mode 2: Search Papers (arXiv) ---
-
-    async def _search_papers(self) -> AsyncIterator[dict[str, Any]]:
-        """Search arXiv for AI/ML research papers."""
-        logger.info(
-            f"Searching arXiv papers: query='{self.config.query}' "
-            f"category='{self.config.arxiv_category}'"
-        )
-
-        total_yielded = 0
-        consecutive_empty = 0
-        start = 0
-
-        while total_yielded < self.config.max_results:
-            page_size = min(
-                ARXIV_PAGE_SIZE,
-                self.config.max_results - total_yielded,
+        # Try ticker
+        if self.config.ticker:
+            await self.tickers.ensure(
+                self.client, self.headers, self.rate_limiter, self.timeout, self.retries
             )
+            rec = self.tickers.by_ticker.get(self.config.ticker)
+            if rec:
+                return rec.cik_str, rec.title
 
-            search_query = self._build_arxiv_query()
-
-            # Sort mapping
-            sort_by = "relevance"
-            sort_order = "descending"
-            sort = self.config.sort
-            if sort == "submittedDate":
-                sort_by = "submittedDate"
-                sort_order = "descending"
-            elif sort == "lastUpdatedDate":
-                sort_by = "lastUpdatedDate"
-                sort_order = "descending"
-
-            params: dict[str, Any] = {
-                "search_query": search_query,
-                "start": start,
-                "max_results": page_size,
-                "sortBy": sort_by,
-                "sortOrder": sort_order,
-            }
-
-            logger.debug(
-                f"arXiv query: search_query='{search_query}' "
-                f"start={start} max_results={page_size}"
-            )
-
-            root = await fetch_xml(
-                self.client,
-                ARXIV_API_URL,
-                self.rate_limiter,
-                params,
-            )
-
-            if root is None:
-                consecutive_empty += 1
-                if consecutive_empty >= 2:
-                    logger.info("No more results from arXiv")
-                    break
-                start += page_size
-                continue
-
-            # arXiv Atom namespace
-            ns = {"atom": "http://www.w3.org/2005/Atom"}
-            entries = root.findall("atom:entry", ns)
-
-            if not entries:
-                consecutive_empty += 1
-                if consecutive_empty >= 2:
-                    logger.info("No more results from arXiv")
-                    break
-                start += page_size
-                continue
-
-            consecutive_empty = 0
-
-            for entry in entries:
-                paper = format_arxiv_paper(entry)
-
-                # Apply client-side date filtering if specified
-                if self.config.date_from or self.config.date_to:
-                    pub_date = paper.get("publishedDate", "")
-                    if pub_date:
-                        # arXiv dates are ISO format: 2026-01-15T12:00:00Z
-                        date_str = pub_date[:10]  # YYYY-MM-DD
-                        if self.config.date_from and date_str < self.config.date_from:
-                            continue
-                        if self.config.date_to and date_str > self.config.date_to:
-                            continue
-
-                yield paper
-                total_yielded += 1
-                if total_yielded >= self.config.max_results:
-                    break
-
-            logger.info(f"Fetched {total_yielded} papers so far")
-
-            # If we got fewer results than requested, we've hit the end
-            if len(entries) < page_size:
-                break
-
-            start += len(entries)
-
-            # Safety: arXiv has a practical limit
-            if start >= 10000:
-                logger.info("Reached maximum arXiv pagination depth (10,000)")
-                break
-
-    def _build_arxiv_query(self) -> str:
-        """Build the arXiv search query string.
-
-        arXiv query syntax:
-        - all:keyword -- search all fields
-        - ti:keyword -- search title only
-        - abs:keyword -- search abstract only
-        - au:name -- search author
-        - cat:cs.AI -- search category
-        - AND, OR, ANDNOT operators
-        """
-        parts: list[str] = []
-
+        # Try EFTS entity search by query
         if self.config.query:
-            # Search in all fields (title + abstract)
-            query = self.config.query.strip()
-            # If query contains spaces, wrap in quotes for exact match
-            if " " in query:
-                parts.append(f'all:"{query}"')
-            else:
-                parts.append(f"all:{query}")
-
-        if self.config.arxiv_category:
-            parts.append(f"cat:{self.config.arxiv_category}")
-
-        if self.config.author:
-            author = self.config.author.strip()
-            if " " in author:
-                parts.append(f'au:"{author}"')
-            else:
-                parts.append(f"au:{author}")
-
-        if not parts:
-            # Default to all AI/ML categories if nothing specified
-            parts.append(
-                "cat:cs.AI OR cat:cs.LG OR cat:cs.CL OR cat:cs.CV"
-            )
-
-        return " AND ".join(parts) if len(parts) > 1 else parts[0]
-
-    # --- Mode 3: Trending Papers (HuggingFace Daily Papers) ---
-
-    async def _trending_papers(self) -> AsyncIterator[dict[str, Any]]:
-        """Fetch trending/daily AI papers from HuggingFace."""
-        logger.info("Fetching trending papers from HuggingFace Daily Papers")
-
-        total_yielded = 0
-        consecutive_empty = 0
-        offset = 0
-
-        while total_yielded < self.config.max_results:
-            page_size = min(
-                HF_PAGE_SIZE,
-                self.config.max_results - total_yielded,
-            )
-
-            params: dict[str, Any] = {
-                "limit": page_size,
-                "offset": offset,
+            search_body = {
+                "keys": self.config.query,
+                "entity": "company",
+                "start": 0,
+                "count": 1,
             }
-
             data = await fetch_json(
                 self.client,
-                HUGGINGFACE_DAILY_PAPERS_URL,
+                "POST",
+                EFTS_SEARCH_URL,
                 self.rate_limiter,
-                params,
+                self.headers,
+                max_retries=self.retries,
+                timeout=self.timeout,
+                json=search_body,
+            )
+            if data and data.get("hits", {}).get("total", 0) > 0:
+                hit = data.get("hits", {}).get("hits", [{}])[0].get("_source", {})
+                ciks = hit.get("ciks", [])
+                display_names = hit.get("display_names", [])
+                cik_val = str(ciks[0]).zfill(10) if ciks else None
+                name = None
+                if display_names:
+                    name = display_names[0].split("  (")[0].strip()
+                return cik_val, name
+
+        return None, None
+
+    async def _resolve_entity(self) -> AsyncGenerator[dict[str, Any], None]:
+        cik, name_override = await self._resolve_to_cik()
+        if not cik:
+            logger.warning("No matching CIK found for provided input")
+            return
+
+        sub_url = SUBMISSIONS_URL.format(cik=cik)
+        submissions = await fetch_json(
+            self.client,
+            "GET",
+            sub_url,
+            self.rate_limiter,
+            self.headers,
+            max_retries=self.retries,
+            timeout=self.timeout,
+        )
+        if not submissions:
+            logger.warning(f"No submissions found for CIK {cik}")
+            return
+
+        company = submissions.get("companyName", name_override or "")
+        tickers = submissions.get("tickers", [])
+        sic = submissions.get("sic", "") or None
+        sic_desc = submissions.get("sicDescription", "") or None
+        state = submissions.get("stateOfIncorporation", "") or None
+        country = submissions.get("stateOfIncorporationCountry", "") or None
+        fiscal_year_end = submissions.get("fiscalYearEnd", "") or None
+        mailing = submissions.get("mailingAddress", {}) or None
+        business = submissions.get("businessAddress", {}) or None
+        former_names = [fn.get("name", "") for fn in submissions.get("formerNames", [])]
+
+        recent_filings: list[dict[str, Any]] = []
+        recent = submissions.get("recent", {})
+        if recent:
+            max_filings = max(1, min(self.config.max_recent_filings, 100))
+            forms = recent.get("form", [])
+            filings_cik = recent.get("cik", [])
+            filings_acc = recent.get("accessionNumber", [])
+            filings_primary = recent.get("primaryDocument", [])
+            filings_dates = recent.get("filingDate", [])
+            for form, acc, primary, fdate, cik_val in zip(
+                forms, filings_acc, filings_primary, filings_dates, filings_cik
+            ):
+                if len(recent_filings) >= max_filings:
+                    break
+                if not self.config.include_amendments and isinstance(form, str) and form.endswith("/A"):
+                    continue
+                if self.config.form_prefix and isinstance(form, str):
+                    if not form.upper().startswith(self.config.form_prefix.upper()):
+                        continue
+                filing_url = build_filing_url(acc)
+                primary_url = build_primary_doc_url(acc, primary)
+                recent_filings.append(
+                    {
+                        "form": form,
+                        "fileDate": fdate,
+                        "accessionNumber": acc,
+                        "filingUrl": filing_url,
+                        "primaryDocumentUrl": primary_url,
+                        "cik": str(cik_val).zfill(10),
+                    }
+                )
+
+        entity = EntityProfile(
+            cik=cik,
+            name=company,
+            tickers=tickers,
+            sic=sic,
+            sic_description=sic_desc,
+            state=state,
+            country=country,
+            fiscal_year_end=fiscal_year_end,
+            mailing_address=mailing,
+            business_address=business,
+            former_names=[fn for fn in former_names if fn],
+            recent_filings=recent_filings,
+            source_urls=[sub_url],
+        )
+        yield entity.model_dump(exclude_none=True)
+
+    async def _search_filings(self) -> AsyncGenerator[dict[str, Any], None]:
+        # Resolve target CIK if needed
+        cik, name_override = await self._resolve_to_cik()
+        query = self.config.query
+        if cik and not query:
+            query = cik
+
+        body: dict[str, Any] = {
+            "keys": query,
+            "start": self.config.start,
+            "count": min(self.config.max_results, 1000),
+        }
+        if cik:
+            body["ciks"] = [cik]
+        if self.config.form_types:
+            body["forms"] = self.config.form_types
+        if self.config.date_from or self.config.date_to:
+            body["dateRange"] = {
+                "field": "filed",
+                "gte": self.config.date_from or None,
+                "lte": self.config.date_to or None,
+            }
+        data = await fetch_json(
+            self.client,
+            "POST",
+            EFTS_SEARCH_URL,
+            self.rate_limiter,
+            self.headers,
+            max_retries=self.retries,
+            timeout=self.timeout,
+            json=body,
+        )
+        if not data:
+            return
+
+        hits = data.get("hits", {})
+        items = hits.get("hits", [])
+        total = hits.get("total", 0)
+        if not items:
+            return
+
+        for hit in items:
+            src = hit.get("_source", {})
+            form = src.get("form", "")
+            if not self.config.include_amendments and isinstance(form, str) and form.endswith("/A"):
+                continue
+            if self.config.form_prefix and isinstance(form, str):
+                if not form.upper().startswith(self.config.form_prefix.upper()):
+                    continue
+            accession = src.get("adsh", "")
+            primary_doc = src.get("primary_document", "")
+            filing = FilingRecord(
+                cik=str(src.get("cik", "")).zfill(10),
+                name=(name_override or src.get("display_names", [None])[0]),
+                tickers=src.get("tickers", []),
+                form=form,
+                file_date=src.get("file_date"),
+                acceptance_datetime=src.get("filed_at"),
+                accession_number=accession,
+                filing_url=build_filing_url(accession) if accession else None,
+                primary_document_url=build_primary_doc_url(accession, primary_doc)
+                if accession and primary_doc
+                else None,
+                items=src.get("items", []) or [],
+                state=src.get("state"),
+                sic=src.get("sic"),
+                sic_description=src.get("sic_description"),
+            )
+            yield filing.model_dump(exclude_none=True)
+
+        # If pagination needed, EFTS supports start/count; basic single-page for now
+        if total > len(items):
+            logger.info(
+                f"Results truncated: returned {len(items)} of {total}. Increase start/count for pagination."
             )
 
-            if not data or not isinstance(data, list):
-                consecutive_empty += 1
-                if consecutive_empty >= 2:
-                    logger.info("No more trending papers from HuggingFace")
-                    break
-                offset += page_size
+    async def _get_company_facts(self) -> AsyncGenerator[dict[str, Any], None]:
+        cik, name_override = await self._resolve_to_cik()
+        if not cik:
+            logger.warning("No matching CIK found for facts")
+            return
+
+        facts_url = COMPANY_FACTS_URL.format(cik=cik)
+        data = await fetch_json(
+            self.client,
+            "GET",
+            facts_url,
+            self.rate_limiter,
+            self.headers,
+            max_retries=self.retries,
+            timeout=self.timeout,
+        )
+        if not data:
+            return
+
+        company = data.get("entityName", name_override or "")
+        sic = data.get("sic", "") or None
+        facts = data.get("facts", {}) or {}
+
+        namespaces = {ns.lower() for ns in self.config.namespaces} if self.config.namespaces else None
+        concepts_filter = {c.lower() for c in self.config.concepts} if self.config.concepts else None
+        period_type = self.config.period_type.lower() if self.config.period_type else None
+
+        for ns_name, ns_body in facts.items():
+            if namespaces and ns_name.lower() not in namespaces:
                 continue
-
-            if len(data) == 0:
-                consecutive_empty += 1
-                if consecutive_empty >= 2:
-                    logger.info("No more trending papers from HuggingFace")
-                    break
-                offset += page_size
-                continue
-
-            consecutive_empty = 0
-
-            for paper_data in data:
-                paper = format_hf_paper(paper_data)
-
-                # Optional keyword filtering for trending papers
-                if self.config.query:
-                    query_lower = self.config.query.lower()
-                    title = paper.get("title", "").lower()
-                    summary = paper.get("summary", "").lower()
-                    if query_lower not in title and query_lower not in summary:
-                        continue
-
-                yield paper
-                total_yielded += 1
-                if total_yielded >= self.config.max_results:
-                    break
-
-            logger.info(f"Fetched {total_yielded} trending papers so far")
-
-            # If we got fewer results than requested, we've hit the end
-            if len(data) < page_size:
-                break
-
-            offset += len(data)
+            for concept, concept_body in ns_body.items():
+                if concepts_filter and concept.lower() not in concepts_filter:
+                    continue
+                units = concept_body.get("units", {}) or {}
+                for unit_name, unit_values in units.items():
+                    for entry in unit_values:
+                        start = entry.get("start")
+                        end = entry.get("end")
+                        if period_type == "instant" and start:
+                            continue
+                        if period_type == "duration" and not start:
+                            continue
+                        filing_url = None
+                        if accession := entry.get("accn"):
+                            filing_url = build_filing_url(accession)
+                        record = FactRecord(
+                            cik=cik,
+                            name=company,
+                            sic=sic,
+                            concept=concept,
+                            namespace=ns_name,
+                            label=concept_body.get("label"),
+                            unit=unit_name,
+                            value=entry.get("val"),
+                            start=start,
+                            end=end,
+                            form=entry.get("form"),
+                            frame=entry.get("frame"),
+                            filing_url=filing_url,
+                        )
+                        yield record.model_dump(exclude_none=True)

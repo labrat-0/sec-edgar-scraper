@@ -1,5 +1,3 @@
-"""Entry point for the AI/ML Intelligence Scraper actor."""
-
 import asyncio
 import logging
 

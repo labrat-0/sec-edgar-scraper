@@ -1,204 +1,129 @@
-"""Utility functions for rate limiting, retries, and HTTP helpers."""
-
 from __future__ import annotations
 
 import asyncio
 import logging
-import xml.etree.ElementTree as ET
+import random
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-# Public APIs -- be polite but no strict rate limits
-REQUEST_INTERVAL = 0.5  # seconds between requests
+# SEC requirements (override with userAgent input)
+DEFAULT_USER_AGENT = "ApifySECResolver (user@example.com)"  # replace at runtime if provided
+DEFAULT_REQUEST_INTERVAL = 0.3
+DEFAULT_TIMEOUT = 30.0
+DEFAULT_MAX_RETRIES = 5
 
-# Retry settings
-MAX_RETRIES = 3
-RETRY_BASE_DELAY = 3.0  # seconds
-
-# API base URLs
-HUGGINGFACE_MODELS_URL = "https://huggingface.co/api/models"
-HUGGINGFACE_DAILY_PAPERS_URL = "https://huggingface.co/api/daily_papers"
-ARXIV_API_URL = "https://export.arxiv.org/api/query"
+EFTS_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
+COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 
 
 class RateLimiter:
-    """Simple rate limiter that ensures a minimum interval between requests."""
+    """Simple rate limiter that enforces a minimum interval between requests."""
 
-    def __init__(self, interval: float = REQUEST_INTERVAL) -> None:
+    def __init__(self, interval: float = DEFAULT_REQUEST_INTERVAL) -> None:
         self._interval = interval
         self._last_request: float = 0.0
         self._lock = asyncio.Lock()
 
     async def wait(self) -> None:
-        """Wait until it's safe to make another request."""
         async with self._lock:
             now = asyncio.get_event_loop().time()
             elapsed = now - self._last_request
             if elapsed < self._interval:
-                wait_time = self._interval - elapsed
-                logger.debug(f"Rate limiter: waiting {wait_time:.1f}s")
-                await asyncio.sleep(wait_time)
+                await asyncio.sleep(self._interval - elapsed)
             self._last_request = asyncio.get_event_loop().time()
+
+
+def build_headers(user_agent: str | None = None) -> dict[str, str]:
+    ua = user_agent.strip() if user_agent else DEFAULT_USER_AGENT
+    return {
+        "User-Agent": ua,
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate",
+    }
 
 
 async def fetch_json(
     client: httpx.AsyncClient,
+    method: str,
     url: str,
     rate_limiter: RateLimiter,
+    headers: dict[str, str],
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    timeout: float = DEFAULT_TIMEOUT,
+    json: dict[str, Any] | None = None,
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any] | list[Any] | None:
-    """Fetch JSON from a URL with rate limiting and retry logic.
-
-    Returns the parsed JSON data, or None if all retries fail.
-    """
-    for attempt in range(MAX_RETRIES):
+    """HTTP JSON fetch with retries/backoff and SEC headers."""
+    for attempt in range(max_retries + 1):
         await rate_limiter.wait()
-
         try:
-            response = await client.get(
+            response = await client.request(
+                method,
                 url,
+                headers=headers,
+                json=json,
                 params=params,
-                timeout=30.0,
-                follow_redirects=True,
+                timeout=timeout,
             )
 
-            if response.status_code == 200:
+            status = response.status_code
+            if status == 200:
                 return response.json()
 
-            if response.status_code == 429:
-                delay = RETRY_BASE_DELAY * (2 ** attempt)
+            if status in {429, 503, 502, 500}:
+                delay = min(15.0, 1.5 * (2**attempt))
+                jitter = random.uniform(0, 0.5)
+                total = delay + jitter
                 logger.warning(
-                    f"Rate limited (429) on {url}. "
-                    f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                    f"{status} on {url} attempt {attempt+1}/{max_retries}. "
+                    f"Retrying in {total:.1f}s"
                 )
-                await asyncio.sleep(delay)
+                await asyncio.sleep(total)
                 continue
 
-            if response.status_code == 403:
-                logger.error(f"Forbidden (403) on {url}.")
+            if status == 403:
+                logger.error("403 Forbidden - check SEC User-Agent and etiquette.")
                 return None
 
-            if response.status_code == 400:
-                logger.error(
-                    f"Bad request (400) on {url}. "
-                    f"Response: {response.text[:500]}"
-                )
+            if status == 404:
+                logger.info(f"404 Not Found: {url}")
                 return None
-
-            if response.status_code == 404:
-                logger.warning(f"Not found (404): {url}")
-                return None
-
-            if response.status_code >= 500:
-                delay = 10.0 * (attempt + 1)
-                logger.warning(
-                    f"Server error ({response.status_code}) on {url}. "
-                    f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
-                )
-                await asyncio.sleep(delay)
-                continue
 
             logger.warning(
-                f"Unexpected status {response.status_code} on {url}. "
-                f"Response: {response.text[:300]}"
+                f"Unexpected status {status} on {url}. Body: {response.text[:300]}"
             )
             return None
 
         except httpx.TimeoutException:
-            delay = 10.0 * (attempt + 1)
+            delay = min(20.0, 2.0 * (attempt + 1))
             logger.warning(
-                f"Timeout on {url}. "
-                f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                f"Timeout on {url} attempt {attempt+1}/{max_retries}. "
+                f"Retrying in {delay:.1f}s"
             )
             await asyncio.sleep(delay)
             continue
-
         except httpx.HTTPError as e:
-            delay = 10.0 * (attempt + 1)
+            delay = min(20.0, 2.0 * (attempt + 1))
             logger.warning(
-                f"HTTP error on {url}: {e}. "
-                f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                f"HTTP error on {url}: {e}. attempt {attempt+1}/{max_retries}. "
+                f"Retrying in {delay:.1f}s"
             )
             await asyncio.sleep(delay)
             continue
 
-    logger.error(f"All {MAX_RETRIES} retries exhausted for {url}")
+    logger.error(f"All retries exhausted for {url}")
     return None
 
 
-async def fetch_xml(
-    client: httpx.AsyncClient,
-    url: str,
-    rate_limiter: RateLimiter,
-    params: dict[str, Any] | None = None,
-) -> ET.Element | None:
-    """Fetch XML from a URL with rate limiting and retry logic.
+def build_primary_doc_url(accession: str, primary_doc: str) -> str:
+    acc_no_dashes = accession.replace("-", "")
+    return f"https://www.sec.gov/Archives/edgar/data/{int(acc_no_dashes):010d}/{acc_no_dashes}/{primary_doc}"
 
-    Returns the parsed XML root element, or None if all retries fail.
-    Used for arXiv API which returns Atom XML.
-    """
-    for attempt in range(MAX_RETRIES):
-        await rate_limiter.wait()
 
-        try:
-            response = await client.get(
-                url,
-                params=params,
-                timeout=30.0,
-                follow_redirects=True,
-            )
-
-            if response.status_code == 200:
-                return ET.fromstring(response.text)
-
-            if response.status_code == 429:
-                delay = RETRY_BASE_DELAY * (2 ** attempt)
-                logger.warning(
-                    f"Rate limited (429) on {url}. "
-                    f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            if response.status_code >= 500:
-                delay = 10.0 * (attempt + 1)
-                logger.warning(
-                    f"Server error ({response.status_code}) on {url}. "
-                    f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            logger.warning(
-                f"Unexpected status {response.status_code} on {url}. "
-                f"Response: {response.text[:300]}"
-            )
-            return None
-
-        except httpx.TimeoutException:
-            delay = 10.0 * (attempt + 1)
-            logger.warning(
-                f"Timeout on {url}. "
-                f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
-            )
-            await asyncio.sleep(delay)
-            continue
-
-        except httpx.HTTPError as e:
-            delay = 10.0 * (attempt + 1)
-            logger.warning(
-                f"HTTP error on {url}: {e}. "
-                f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})"
-            )
-            await asyncio.sleep(delay)
-            continue
-
-        except ET.ParseError as e:
-            logger.error(f"XML parse error on {url}: {e}")
-            return None
-
-    logger.error(f"All {MAX_RETRIES} retries exhausted for {url}")
-    return None
+def build_filing_url(accession: str) -> str:
+    return f"https://www.sec.gov/Archives/edgar/data/{int(accession.replace('-', '')):010d}/{accession.replace('-', '')}/{accession}-index.htm"

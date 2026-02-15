@@ -1,7 +1,7 @@
 {
     "actorOutputSchemaVersion": 1,
-    "title": "AI/ML Intelligence Scraper Results",
-    "description": "AI/ML models from HuggingFace Hub and research papers from arXiv and HuggingFace Daily Papers.",
+    "title": "SEC EDGAR Entity Resolver Results",
+    "description": "Links to dataset items for SEC EDGAR Entity Resolver.",
     "properties": {
         "results": {
             "type": "string",

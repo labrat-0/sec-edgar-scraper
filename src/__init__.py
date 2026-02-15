@@ -1,1 +1,1 @@
-"""AI/ML Intelligence Scraper -- Apify Actor."""
+"""SEC EDGAR Entity Resolver package."""

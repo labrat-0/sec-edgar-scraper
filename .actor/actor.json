@@ -1,7 +1,7 @@
 {
     "actorSpecification": 1,
-    "name": "ai-ml-scraper",
-    "title": "AI/ML Intelligence Scraper",
+    "name": "sec-edgar-scraper",
+    "title": "SEC EDGAR Entity Resolver",
     "version": "1.0.0",
     "buildTag": "latest",
     "input": "./input_schema.json",

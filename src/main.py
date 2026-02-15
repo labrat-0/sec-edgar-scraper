@@ -1,5 +1,3 @@
-"""AI/ML Intelligence Scraper -- Apify Actor entry point."""
-
 from __future__ import annotations
 
 import logging
@@ -9,19 +7,16 @@ import httpx
 from apify import Actor
 
 from .models import ScraperInput
-from .scraper import AiMlScraper
+from .scraper import EdgarScraper
 from .utils import RateLimiter
 
 logger = logging.getLogger(__name__)
 
-# Free tier limit
 FREE_TIER_LIMIT = 25
 
 
 async def main() -> None:
-    """Main actor function."""
     async with Actor:
-        # 1. Get and validate input
         raw_input = await Actor.get_input() or {}
         config = ScraperInput.from_actor_input(raw_input)
 
@@ -30,7 +25,6 @@ async def main() -> None:
             await Actor.fail(status_message=validation_error)
             return
 
-        # 2. Handle free user limits
         is_paying = os.environ.get("APIFY_IS_AT_HOME") == "1" and os.environ.get(
             "APIFY_USER_IS_PAYING"
         ) == "1"
@@ -44,25 +38,24 @@ async def main() -> None:
             )
 
         Actor.log.info(
-            f"Starting AI/ML Intelligence Scraper | mode={config.mode.value} | "
-            f"max_results={max_results}"
+            "Starting SEC EDGAR Entity Resolver | mode=%s | max_results=%s",
+            config.mode.value,
+            max_results,
         )
 
-        # 3. Resume state (survives migrations)
-        state = await Actor.use_state(
-            default_value={"scraped": 0, "failed": 0}
-        )
+        state = await Actor.use_state(default_value={"scraped": 0, "failed": 0})
 
-        # 4. Set up HTTP client (no proxy needed -- public APIs)
-        await Actor.set_status_message("Connecting to data sources...")
+        await Actor.set_status_message("Connecting to SEC EDGAR...")
+
+        headers_ua = raw_input.get("userAgent") or raw_input.get("user_agent")
 
         async with httpx.AsyncClient() as client:
-            rate_limiter = RateLimiter()
-            scraper = AiMlScraper(client, rate_limiter, config)
+            rate_limiter = RateLimiter(interval=config.request_interval_secs)
+            scraper = EdgarScraper(client, rate_limiter, config, user_agent=headers_ua)
 
             count = state["scraped"]
             batch: list[dict] = []
-            batch_size = 25  # Push in batches for efficiency
+            batch_size = 25
 
             try:
                 async for item in scraper.scrape():
@@ -73,27 +66,20 @@ async def main() -> None:
                     count += 1
                     state["scraped"] = count
 
-                    # Push in batches
                     if len(batch) >= batch_size:
                         await Actor.push_data(batch)
                         batch = []
+                        await Actor.set_status_message(f"Scraped {count}/{max_results} items")
 
-                        await Actor.set_status_message(
-                            f"Scraped {count}/{max_results} items"
-                        )
-
-                # Push remaining items
                 if batch:
                     await Actor.push_data(batch)
 
-            except Exception as e:
+            except Exception as e:  # pragma: no cover - defensive
                 state["failed"] += 1
                 Actor.log.error(f"Scraping error: {e}")
-                # Push whatever we have so far
                 if batch:
                     await Actor.push_data(batch)
 
-        # 5. Final status message
         msg = f"Done. Scraped {count} items."
         if state["failed"] > 0:
             msg += f" {state['failed']} errors encountered."
@@ -103,8 +89,7 @@ async def main() -> None:
             and count >= FREE_TIER_LIMIT
         ):
             msg += (
-                f" Free tier limit ({FREE_TIER_LIMIT}) reached."
-                " Subscribe for unlimited results."
+                f" Free tier limit ({FREE_TIER_LIMIT}) reached." " Subscribe for unlimited results."
             )
 
         Actor.log.info(msg)
