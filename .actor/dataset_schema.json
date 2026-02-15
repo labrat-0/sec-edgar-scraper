@@ -1,4 +1,5 @@
 {
+    "actorSpecification": 1,
     "title": "SEC EDGAR Entity Resolver Dataset",
     "description": "Dataset items emitted by the actor.",
     "type": "object",
