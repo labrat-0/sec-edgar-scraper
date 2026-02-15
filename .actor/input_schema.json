@@ -44,7 +44,8 @@
             "title": "Form types",
             "type": "array",
             "items": { "type": "string" },
-            "description": "SEC form types to include (e.g., 10-K, 10-Q, 8-K, S-1). Leave empty for all forms."
+            "description": "SEC form types to include (e.g., 10-K, 10-Q, 8-K, S-1). Leave empty for all forms.",
+            "editor": "json"
         },
         "dateFrom": {
             "title": "Filed from",
@@ -101,13 +102,15 @@
             "title": "XBRL namespaces",
             "type": "array",
             "items": { "type": "string" },
-            "description": "Filter facts by XBRL namespace (e.g., us-gaap, dei, ifrs-full). Leave empty for all."
+            "description": "Filter facts by XBRL namespace (e.g., us-gaap, dei, ifrs-full). Leave empty for all.",
+            "editor": "json"
         },
         "concepts": {
             "title": "XBRL concepts",
             "type": "array",
             "items": { "type": "string" },
-            "description": "Filter facts by concept name (e.g., Revenue, Assets, NetIncomeLoss). Leave empty for all."
+            "description": "Filter facts by concept name (e.g., Revenue, Assets, NetIncomeLoss). Leave empty for all.",
+            "editor": "json"
         },
         "periodType": {
             "title": "Period type",
