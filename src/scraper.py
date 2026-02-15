@@ -165,13 +165,13 @@ class EdgarScraper:
 
         company = submissions.get("companyName", name_override or "")
         tickers = submissions.get("tickers", [])
-        sic = submissions.get("sic", "") or None
-        sic_desc = submissions.get("sicDescription", "") or None
-        state = submissions.get("stateOfIncorporation", "") or None
-        country = submissions.get("stateOfIncorporationCountry", "") or None
-        fiscal_year_end = submissions.get("fiscalYearEnd", "") or None
-        mailing = submissions.get("mailingAddress", {}) or None
-        business = submissions.get("businessAddress", {}) or None
+        sic = submissions.get("sic", "") or ""
+        sic_desc = submissions.get("sicDescription", "") or ""
+        state = submissions.get("stateOfIncorporation", "") or ""
+        country = submissions.get("stateOfIncorporationCountry", "") or ""
+        fiscal_year_end = submissions.get("fiscalYearEnd", "") or ""
+        mailing = submissions.get("mailingAddress") or {}
+        business = submissions.get("businessAddress") or {}
         former_names = [fn.get("name", "") for fn in submissions.get("formerNames", [])]
 
         recent_filings: list[dict[str, Any]] = []
@@ -221,7 +221,7 @@ class EdgarScraper:
             recent_filings=recent_filings,
             source_urls=[sub_url],
         )
-        yield entity.model_dump(exclude_none=True)
+        yield entity.model_dump()
 
     async def _search_filings(self) -> AsyncGenerator[dict[str, Any], None]:
         # Resolve target CIK if needed
@@ -277,25 +277,25 @@ class EdgarScraper:
             cik_list = src.get("ciks", [])
             cik_val = str(cik_list[0]).zfill(10) if cik_list else ""
             display_names = src.get("display_names", [])
-            name = name_override or (display_names[0].split("  (")[0].strip() if display_names else None)
+            name = name_override or (display_names[0].split("  (")[0].strip() if display_names else "")
             filing = FilingRecord(
                 cik=cik_val,
                 name=name,
                 tickers=src.get("tickers", []),
                 form=form,
-                file_date=src.get("file_date"),
-                acceptance_datetime=src.get("filed_at"),
+                file_date=src.get("file_date", "") or "",
+                acceptance_datetime=src.get("filed_at", "") or "",
                 accession_number=accession,
-                filing_url=build_filing_url(accession) if accession else None,
+                filing_url=build_filing_url(accession) if accession else "",
                 primary_document_url=build_primary_doc_url(accession, primary_doc)
                 if accession and primary_doc
-                else None,
+                else "",
                 items=src.get("items", []) or [],
-                state=src.get("state"),
-                sic=src.get("sic"),
-                sic_description=src.get("sic_description"),
+                state=src.get("state", "") or "",
+                sic=src.get("sic", "") or "",
+                sic_description=src.get("sic_description", "") or "",
             )
-            yield filing.model_dump(exclude_none=True)
+            yield filing.model_dump()
 
         # If pagination needed, EFTS supports start/count; basic single-page for now
         if total > len(items):
@@ -323,7 +323,7 @@ class EdgarScraper:
             return
 
         company = data.get("entityName", name_override or "")
-        sic = data.get("sic", "") or None
+        sic = data.get("sic", "") or ""
         facts = data.get("facts", {}) or {}
 
         namespaces = {ns.lower() for ns in self.config.namespaces} if self.config.namespaces else None
@@ -345,7 +345,7 @@ class EdgarScraper:
                             continue
                         if period_type == "duration" and not start:
                             continue
-                        filing_url = None
+                        filing_url = ""
                         if accession := entry.get("accn"):
                             filing_url = build_filing_url(accession)
                         record = FactRecord(
@@ -354,13 +354,13 @@ class EdgarScraper:
                             sic=sic,
                             concept=concept,
                             namespace=ns_name,
-                            label=concept_body.get("label"),
+                            label=concept_body.get("label", "") or "",
                             unit=unit_name,
                             value=entry.get("val"),
-                            start=start,
-                            end=end,
-                            form=entry.get("form"),
-                            frame=entry.get("frame"),
+                            start=start or "",
+                            end=end or "",
+                            form=entry.get("form", "") or "",
+                            frame=entry.get("frame", "") or "",
                             filing_url=filing_url,
                         )
-                        yield record.model_dump(exclude_none=True)
+                        yield record.model_dump()

@@ -107,51 +107,54 @@ class TickerRecord(BaseModel):
 
 
 class EntityProfile(BaseModel):
+    schema_version: str = "1.0"
     type: str = "entity"
     cik: str
     name: str
     tickers: list[str] = Field(default_factory=list)
-    sic: str | None = None
-    sic_description: str | None = None
-    state: str | None = None
-    country: str | None = None
-    fiscal_year_end: str | None = None
-    mailing_address: dict[str, str] | None = None
-    business_address: dict[str, str] | None = None
+    sic: str = ""
+    sic_description: str = ""
+    state: str = ""
+    country: str = ""
+    fiscal_year_end: str = ""
+    mailing_address: dict[str, str] = Field(default_factory=dict)
+    business_address: dict[str, str] = Field(default_factory=dict)
     former_names: list[str] = Field(default_factory=list)
     recent_filings: list[dict[str, Any]] = Field(default_factory=list)
     source_urls: list[str] = Field(default_factory=list)
 
 
 class FilingRecord(BaseModel):
+    schema_version: str = "1.0"
     type: str = "filing"
     cik: str
-    name: str | None = None
+    name: str = ""
     tickers: list[str] = Field(default_factory=list)
-    form: str | None = None
-    file_date: str | None = None
-    acceptance_datetime: str | None = None
-    accession_number: str | None = None
-    filing_url: str | None = None
-    primary_document_url: str | None = None
+    form: str = ""
+    file_date: str = ""
+    acceptance_datetime: str = ""
+    accession_number: str = ""
+    filing_url: str = ""
+    primary_document_url: str = ""
     items: list[str] = Field(default_factory=list)
-    state: str | None = None
-    sic: str | None = None
-    sic_description: str | None = None
+    state: str = ""
+    sic: str = ""
+    sic_description: str = ""
 
 
 class FactRecord(BaseModel):
+    schema_version: str = "1.0"
     type: str = "fact"
     cik: str
-    name: str | None = None
-    sic: str | None = None
-    concept: str | None = None
-    namespace: str | None = None
-    label: str | None = None
-    unit: str | None = None
+    name: str = ""
+    sic: str = ""
+    concept: str = ""
+    namespace: str = ""
+    label: str = ""
+    unit: str = ""
     value: float | int | str | None = None
-    start: str | None = None
-    end: str | None = None
-    form: str | None = None
-    frame: str | None = None
-    filing_url: str | None = None
+    start: str = ""
+    end: str = ""
+    form: str = ""
+    frame: str = ""
+    filing_url: str = ""

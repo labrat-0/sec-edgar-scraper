@@ -32,44 +32,47 @@ SEC EDGAR Entity Resolver turns company names, stock tickers, and CIK numbers in
 
 | Field | Description |
 |-------|-------------|
+| `schema_version` | Schema version (currently `"1.0"`) |
 | `type` | Always `"entity"` |
 | `cik` | 10-digit SEC CIK number |
 | `name` | Official company name |
 | `tickers` | Stock ticker symbols |
 | `sic` | SIC industry code |
-| `sicDescription` | SIC industry description |
+| `sic_description` | SIC industry description |
 | `state` | State of incorporation |
 | `country` | Country of incorporation |
-| `fiscalYearEnd` | Fiscal year end (MMDD) |
-| `mailingAddress` | Mailing address |
-| `businessAddress` | Business address |
-| `formerNames` | Previous company names |
-| `recentFilings` | Recent SEC filings (form, date, accession number, URLs) |
-| `sourceUrls` | SEC API URLs used |
+| `fiscal_year_end` | Fiscal year end (MMDD) |
+| `mailing_address` | Mailing address |
+| `business_address` | Business address |
+| `former_names` | Previous company names |
+| `recent_filings` | Recent SEC filings (form, date, accession number, URLs) |
+| `source_urls` | SEC API URLs used |
 
 ### Filings (search_filings)
 
 | Field | Description |
 |-------|-------------|
+| `schema_version` | Schema version (currently `"1.0"`) |
 | `type` | Always `"filing"` |
 | `cik` | Filer CIK number |
 | `name` | Filer name |
 | `tickers` | Filer ticker symbols |
 | `form` | Form type (10-K, 10-Q, 8-K, etc.) |
-| `fileDate` | Filing date |
-| `acceptanceDatetime` | SEC acceptance timestamp |
-| `accessionNumber` | Unique filing accession number |
-| `filingUrl` | Link to filing index page |
-| `primaryDocumentUrl` | Link to primary document |
+| `file_date` | Filing date |
+| `acceptance_datetime` | SEC acceptance timestamp |
+| `accession_number` | Unique filing accession number |
+| `filing_url` | Link to filing index page |
+| `primary_document_url` | Link to primary document |
 | `items` | Filing items (for 8-K) |
 | `state` | Filer state |
 | `sic` | Filer SIC code |
-| `sicDescription` | Filer SIC description |
+| `sic_description` | Filer SIC description |
 
 ### Facts (get_company_facts)
 
 | Field | Description |
 |-------|-------------|
+| `schema_version` | Schema version (currently `"1.0"`) |
 | `type` | Always `"fact"` |
 | `cik` | Company CIK number |
 | `name` | Company name |
@@ -83,7 +86,7 @@ SEC EDGAR Entity Resolver turns company names, stock tickers, and CIK numbers in
 | `end` | Period end date |
 | `form` | Source form type |
 | `frame` | XBRL reporting frame (e.g., `CY2025Q1`) |
-| `filingUrl` | Link to source filing |
+| `filing_url` | Link to source filing |
 
 ---
 
@@ -209,19 +212,20 @@ Results are saved to the default dataset. Download them in JSON, CSV, Excel, or 
 
 ```json
 {
+    "schema_version": "1.0",
     "type": "entity",
     "cik": "0001045810",
     "name": "NVIDIA CORP",
     "tickers": ["NVDA"],
     "sic": "3674",
-    "sicDescription": "Semiconductors & Related Devices",
+    "sic_description": "Semiconductors & Related Devices",
     "state": "DE",
     "country": "US",
-    "fiscalYearEnd": "0128",
-    "mailingAddress": {"street1": "2788 SAN TOMAS EXPRESSWAY", "city": "SANTA CLARA", "state": "CA", "zip": "95051"},
-    "businessAddress": {"street1": "2788 SAN TOMAS EXPRESSWAY", "city": "SANTA CLARA", "state": "CA", "zip": "95051"},
-    "formerNames": [],
-    "recentFilings": [
+    "fiscal_year_end": "0128",
+    "mailing_address": {"street1": "2788 SAN TOMAS EXPRESSWAY", "city": "SANTA CLARA", "state": "CA", "zip": "95051"},
+    "business_address": {"street1": "2788 SAN TOMAS EXPRESSWAY", "city": "SANTA CLARA", "state": "CA", "zip": "95051"},
+    "former_names": [],
+    "recent_filings": [
         {
             "form": "10-K",
             "fileDate": "2026-02-01",
@@ -230,7 +234,7 @@ Results are saved to the default dataset. Download them in JSON, CSV, Excel, or 
             "primaryDocumentUrl": "https://www.sec.gov/Archives/edgar/data/..."
         }
     ],
-    "sourceUrls": ["https://data.sec.gov/submissions/CIK0001045810.json"]
+    "source_urls": ["https://data.sec.gov/submissions/CIK0001045810.json"]
 }
 ```
 
@@ -238,16 +242,21 @@ Results are saved to the default dataset. Download them in JSON, CSV, Excel, or 
 
 ```json
 {
+    "schema_version": "1.0",
     "type": "filing",
     "cik": "0001318605",
     "name": "TESLA INC",
     "tickers": ["TSLA"],
     "form": "8-K",
-    "fileDate": "2026-01-15",
-    "accessionNumber": "0001318605-26-000456",
-    "filingUrl": "https://www.sec.gov/Archives/edgar/data/...",
-    "primaryDocumentUrl": "https://www.sec.gov/Archives/edgar/data/...",
-    "items": ["2.02", "9.01"]
+    "file_date": "2026-01-15",
+    "acceptance_datetime": "2026-01-15T16:30:00.000Z",
+    "accession_number": "0001318605-26-000456",
+    "filing_url": "https://www.sec.gov/Archives/edgar/data/...",
+    "primary_document_url": "https://www.sec.gov/Archives/edgar/data/...",
+    "items": ["2.02", "9.01"],
+    "state": "TX",
+    "sic": "3711",
+    "sic_description": "Motor Vehicles & Passenger Car Bodies"
 }
 ```
 
@@ -255,9 +264,11 @@ Results are saved to the default dataset. Download them in JSON, CSV, Excel, or 
 
 ```json
 {
+    "schema_version": "1.0",
     "type": "fact",
     "cik": "0000789019",
     "name": "MICROSOFT CORP",
+    "sic": "7372",
     "concept": "Revenue",
     "namespace": "us-gaap",
     "label": "Revenue from Contract with Customer, Excluding Assessed Tax",
@@ -267,7 +278,7 @@ Results are saved to the default dataset. Download them in JSON, CSV, Excel, or 
     "end": "2025-09-30",
     "form": "10-Q",
     "frame": "CY2025Q3",
-    "filingUrl": "https://www.sec.gov/Archives/edgar/data/..."
+    "filing_url": "https://www.sec.gov/Archives/edgar/data/..."
 }
 ```
 
