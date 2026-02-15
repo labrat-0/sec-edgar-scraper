@@ -9,11 +9,12 @@
                     "type",
                     "name",
                     "cik",
-                    "ticker",
-                    "entityType",
+                    "tickers",
                     "sic",
-                    "stateOfIncorporation",
-                    "ein"
+                    "sic_description",
+                    "state",
+                    "country",
+                    "fiscal_year_end"
                 ]
             },
             "display": {
@@ -22,11 +23,12 @@
                     "type": { "label": "Type", "format": "text" },
                     "name": { "label": "Company Name", "format": "text" },
                     "cik": { "label": "CIK", "format": "text" },
-                    "ticker": { "label": "Ticker", "format": "text" },
-                    "entityType": { "label": "Entity Type", "format": "text" },
+                    "tickers": { "label": "Tickers", "format": "text" },
                     "sic": { "label": "SIC Code", "format": "text" },
-                    "stateOfIncorporation": { "label": "State", "format": "text" },
-                    "ein": { "label": "EIN", "format": "text" }
+                    "sic_description": { "label": "SIC Description", "format": "text" },
+                    "state": { "label": "State", "format": "text" },
+                    "country": { "label": "Country", "format": "text" },
+                    "fiscal_year_end": { "label": "Fiscal Year End", "format": "text" }
                 }
             }
         },
@@ -36,11 +38,13 @@
                 "fields": [
                     "type",
                     "form",
-                    "filedAt",
-                    "companyName",
+                    "file_date",
+                    "name",
                     "cik",
-                    "description",
-                    "url"
+                    "accession_number",
+                    "sic_description",
+                    "filing_url",
+                    "primary_document_url"
                 ]
             },
             "display": {
@@ -48,11 +52,13 @@
                 "properties": {
                     "type": { "label": "Type", "format": "text" },
                     "form": { "label": "Form", "format": "text" },
-                    "filedAt": { "label": "Filed", "format": "text" },
-                    "companyName": { "label": "Company", "format": "text" },
+                    "file_date": { "label": "Filed", "format": "text" },
+                    "name": { "label": "Company", "format": "text" },
                     "cik": { "label": "CIK", "format": "text" },
-                    "description": { "label": "Description", "format": "text" },
-                    "url": { "label": "URL", "format": "link" }
+                    "accession_number": { "label": "Accession #", "format": "text" },
+                    "sic_description": { "label": "Industry", "format": "text" },
+                    "filing_url": { "label": "Filing URL", "format": "link" },
+                    "primary_document_url": { "label": "Document URL", "format": "link" }
                 }
             }
         },
@@ -63,11 +69,14 @@
                     "type",
                     "namespace",
                     "concept",
+                    "label",
                     "value",
-                    "units",
-                    "period",
+                    "unit",
+                    "start",
+                    "end",
                     "form",
-                    "filed"
+                    "frame",
+                    "filing_url"
                 ]
             },
             "display": {
@@ -76,11 +85,14 @@
                     "type": { "label": "Type", "format": "text" },
                     "namespace": { "label": "Namespace", "format": "text" },
                     "concept": { "label": "Concept", "format": "text" },
+                    "label": { "label": "Label", "format": "text" },
                     "value": { "label": "Value", "format": "text" },
-                    "units": { "label": "Units", "format": "text" },
-                    "period": { "label": "Period", "format": "text" },
+                    "unit": { "label": "Unit", "format": "text" },
+                    "start": { "label": "Start", "format": "text" },
+                    "end": { "label": "End", "format": "text" },
                     "form": { "label": "Form", "format": "text" },
-                    "filed": { "label": "Filed", "format": "text" }
+                    "frame": { "label": "Frame", "format": "text" },
+                    "filing_url": { "label": "Filing URL", "format": "link" }
                 }
             }
         }
