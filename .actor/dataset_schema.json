@@ -1,12 +1,88 @@
 {
     "actorSpecification": 1,
-    "title": "SEC EDGAR Entity Resolver Dataset",
-    "description": "Dataset items emitted by the actor.",
-    "type": "object",
-    "properties": {
-        "type": {
-            "type": "string",
-            "enum": ["entity", "filing", "fact"]
+    "fields": {},
+    "views": {
+        "entities": {
+            "title": "Entities",
+            "transformation": {
+                "fields": [
+                    "type",
+                    "name",
+                    "cik",
+                    "ticker",
+                    "entityType",
+                    "sic",
+                    "stateOfIncorporation",
+                    "ein"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "type": { "label": "Type", "format": "text" },
+                    "name": { "label": "Company Name", "format": "text" },
+                    "cik": { "label": "CIK", "format": "text" },
+                    "ticker": { "label": "Ticker", "format": "text" },
+                    "entityType": { "label": "Entity Type", "format": "text" },
+                    "sic": { "label": "SIC Code", "format": "text" },
+                    "stateOfIncorporation": { "label": "State", "format": "text" },
+                    "ein": { "label": "EIN", "format": "text" }
+                }
+            }
+        },
+        "filings": {
+            "title": "Filings",
+            "transformation": {
+                "fields": [
+                    "type",
+                    "form",
+                    "filedAt",
+                    "companyName",
+                    "cik",
+                    "description",
+                    "url"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "type": { "label": "Type", "format": "text" },
+                    "form": { "label": "Form", "format": "text" },
+                    "filedAt": { "label": "Filed", "format": "text" },
+                    "companyName": { "label": "Company", "format": "text" },
+                    "cik": { "label": "CIK", "format": "text" },
+                    "description": { "label": "Description", "format": "text" },
+                    "url": { "label": "URL", "format": "link" }
+                }
+            }
+        },
+        "facts": {
+            "title": "Facts",
+            "transformation": {
+                "fields": [
+                    "type",
+                    "namespace",
+                    "concept",
+                    "value",
+                    "units",
+                    "period",
+                    "form",
+                    "filed"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "type": { "label": "Type", "format": "text" },
+                    "namespace": { "label": "Namespace", "format": "text" },
+                    "concept": { "label": "Concept", "format": "text" },
+                    "value": { "label": "Value", "format": "text" },
+                    "units": { "label": "Units", "format": "text" },
+                    "period": { "label": "Period", "format": "text" },
+                    "form": { "label": "Form", "format": "text" },
+                    "filed": { "label": "Filed", "format": "text" }
+                }
+            }
         }
     }
 }
