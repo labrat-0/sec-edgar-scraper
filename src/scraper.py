@@ -83,39 +83,56 @@ class EdgarScraper:
                 yield item
 
     async def _resolve_to_cik(self) -> tuple[str | None, str | None]:
-        # Attempt order: explicit CIK > ticker cache > EFTS search by name
+        # Attempt order: explicit CIK > ticker symbol > ticker cache name search > EFTS search
         if self.config.cik:
             return self.config.cik, None
 
-        # Try ticker
+        # Always load ticker cache for resolution
+        await self.tickers.ensure(
+            self.client, self.headers, self.rate_limiter, self.timeout, self.retries
+        )
+
+        # Try explicit ticker symbol
         if self.config.ticker:
-            await self.tickers.ensure(
-                self.client, self.headers, self.rate_limiter, self.timeout, self.retries
-            )
             rec = self.tickers.by_ticker.get(self.config.ticker)
             if rec:
                 return rec.cik_str, rec.title
 
-        # Try EFTS entity search by query
+        # Try matching query as ticker symbol first
         if self.config.query:
-            search_body = {
-                "keys": self.config.query,
-                "entity": "company",
-                "start": 0,
-                "count": 1,
+            query_upper = self.config.query.strip().upper()
+            rec = self.tickers.by_ticker.get(query_upper)
+            if rec:
+                return rec.cik_str, rec.title
+
+            # Try matching query against company names in ticker cache
+            query_lower = self.config.query.strip().lower()
+            for ticker_rec in self.tickers.by_ticker.values():
+                if query_lower in ticker_rec.title.lower():
+                    return ticker_rec.cik_str, ticker_rec.title
+
+        # Fall back to EFTS full-text search (GET with query params)
+        if self.config.query:
+            params: dict[str, Any] = {
+                "q": self.config.query,
+                "from": 0,
+                "size": 1,
             }
             data = await fetch_json(
                 self.client,
-                "POST",
+                "GET",
                 EFTS_SEARCH_URL,
                 self.rate_limiter,
                 self.headers,
                 max_retries=self.retries,
                 timeout=self.timeout,
-                json=search_body,
+                params=params,
             )
-            if data and data.get("hits", {}).get("total", 0) > 0:
-                hit = data.get("hits", {}).get("hits", [{}])[0].get("_source", {})
+            hits = data.get("hits", {}) if data else {}
+            total = hits.get("total", {})
+            total_val = total.get("value", 0) if isinstance(total, dict) else total
+            if total_val > 0:
+                hit = hits.get("hits", [{}])[0].get("_source", {})
                 ciks = hit.get("ciks", [])
                 display_names = hit.get("display_names", [])
                 cik_val = str(ciks[0]).zfill(10) if ciks else None
@@ -213,37 +230,37 @@ class EdgarScraper:
         if cik and not query:
             query = cik
 
-        body: dict[str, Any] = {
-            "keys": query,
-            "start": self.config.start,
-            "count": min(self.config.max_results, 1000),
+        params: dict[str, Any] = {
+            "q": query or "",
+            "from": self.config.start,
+            "size": min(self.config.max_results, 50),
         }
-        if cik:
-            body["ciks"] = [cik]
         if self.config.form_types:
-            body["forms"] = self.config.form_types
+            params["forms"] = ",".join(self.config.form_types)
+        if self.config.date_from:
+            params["startdt"] = self.config.date_from
+        if self.config.date_to:
+            params["enddt"] = self.config.date_to
         if self.config.date_from or self.config.date_to:
-            body["dateRange"] = {
-                "field": "filed",
-                "gte": self.config.date_from or None,
-                "lte": self.config.date_to or None,
-            }
+            params["dateRange"] = "custom"
+
         data = await fetch_json(
             self.client,
-            "POST",
+            "GET",
             EFTS_SEARCH_URL,
             self.rate_limiter,
             self.headers,
             max_retries=self.retries,
             timeout=self.timeout,
-            json=body,
+            params=params,
         )
         if not data:
             return
 
         hits = data.get("hits", {})
         items = hits.get("hits", [])
-        total = hits.get("total", 0)
+        total_raw = hits.get("total", 0)
+        total = total_raw.get("value", 0) if isinstance(total_raw, dict) else total_raw
         if not items:
             return
 
@@ -257,9 +274,13 @@ class EdgarScraper:
                     continue
             accession = src.get("adsh", "")
             primary_doc = src.get("primary_document", "")
+            cik_list = src.get("ciks", [])
+            cik_val = str(cik_list[0]).zfill(10) if cik_list else ""
+            display_names = src.get("display_names", [])
+            name = name_override or (display_names[0].split("  (")[0].strip() if display_names else None)
             filing = FilingRecord(
-                cik=str(src.get("cik", "")).zfill(10),
-                name=(name_override or src.get("display_names", [None])[0]),
+                cik=cik_val,
+                name=name,
                 tickers=src.get("tickers", []),
                 form=form,
                 file_date=src.get("file_date"),

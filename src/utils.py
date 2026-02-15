@@ -16,6 +16,7 @@ DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_RETRIES = 5
 
 EFTS_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
+EDGAR_FULLTEXT_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
 COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
