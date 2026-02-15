@@ -1,6 +1,7 @@
 {
     "title": "SEC EDGAR Entity Resolver - Input",
     "type": "object",
+    "schemaVersion": 1,
     "properties": {
         "mode": {
             "title": "Mode",
