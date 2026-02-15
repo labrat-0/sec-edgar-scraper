@@ -1,54 +1,69 @@
 {
     "title": "SEC EDGAR Entity Resolver - Input",
+    "description": "Resolve companies to SEC CIK numbers, search filings by form type and date, or extract structured XBRL financial facts from EDGAR. No API key required.",
     "type": "object",
     "schemaVersion": 1,
     "properties": {
         "mode": {
-            "title": "Mode",
+            "sectionCaption": "Scraping Mode",
+            "sectionDescription": "Select what to do: resolve a company to its SEC profile, search filings, or fetch XBRL financial facts.",
+            "title": "Scraping mode",
             "type": "string",
-            "description": "Scraping mode: resolve a company entity, search filings, or get XBRL facts.",
-            "enum": [
-                "resolve_entity",
-                "search_filings",
-                "get_company_facts"
+            "description": "Select what to do: resolve a company entity, search SEC filings, or get structured XBRL financial facts.",
+            "editor": "select",
+            "enum": ["resolve_entity", "search_filings", "get_company_facts"],
+            "enumTitles": [
+                "Resolve Entity (company profile + recent filings)",
+                "Search Filings (full-text SEC filing search)",
+                "Get Company Facts (XBRL financial data)"
             ],
             "default": "resolve_entity"
         },
         "query": {
-            "title": "Search query (name or text)",
+            "sectionCaption": "Search Filters",
+            "sectionDescription": "Identify the company or search text. Provide a company name, stock ticker, CIK number, or keyword.",
+            "title": "Search query",
             "type": "string",
-            "description": "Company name/ticker for resolve_entity, or free text for filing search."
+            "description": "Company name, ticker, or keyword. Used for entity resolution and filing search.",
+            "editor": "textfield",
+            "prefill": "NVIDIA"
         },
         "cik": {
-            "title": "CIK",
+            "title": "CIK number",
             "type": "string",
-            "description": "10-digit CIK (optional; zero-padded if shorter)."
+            "description": "SEC Central Index Key (e.g., 0001045810). Zero-padded to 10 digits automatically.",
+            "editor": "textfield"
         },
         "ticker": {
-            "title": "Ticker",
+            "title": "Stock ticker",
             "type": "string",
-            "description": "Stock ticker to resolve to CIK."
+            "description": "Stock ticker symbol (e.g., NVDA, AAPL, TSLA). Resolved to CIK via SEC ticker list.",
+            "editor": "textfield"
         },
         "formTypes": {
             "title": "Form types",
             "type": "array",
             "items": { "type": "string" },
-            "description": "List of form types to include (e.g., 10-K, 10-Q, 8-K)."
+            "description": "SEC form types to include (e.g., 10-K, 10-Q, 8-K, S-1). Leave empty for all forms."
         },
         "dateFrom": {
-            "title": "Filed from (YYYY-MM-DD)",
+            "title": "Filed from",
             "type": "string",
-            "description": "Filter filings filed on or after this date (YYYY-MM-DD)."
+            "description": "Only include filings filed on or after this date (YYYY-MM-DD).",
+            "editor": "textfield"
         },
         "dateTo": {
-            "title": "Filed to (YYYY-MM-DD)",
+            "title": "Filed to",
             "type": "string",
-            "description": "Filter filings filed on or before this date (YYYY-MM-DD)."
+            "description": "Only include filings filed on or before this date (YYYY-MM-DD).",
+            "editor": "textfield"
         },
         "maxResults": {
+            "sectionCaption": "Output Settings",
+            "sectionDescription": "Control how many results are returned.",
             "title": "Max results",
             "type": "integer",
-            "description": "Maximum number of results to return. Free users are limited to 25 per run.",
+            "description": "Maximum number of results to return (1-1000). Free users are limited to 25 per run.",
             "default": 100,
             "minimum": 1,
             "maximum": 1000
@@ -56,56 +71,64 @@
         "start": {
             "title": "Start offset",
             "type": "integer",
-            "description": "Pagination offset for search_filings results.",
+            "description": "Pagination offset for search_filings. Use with maxResults to page through large result sets.",
             "default": 0,
             "minimum": 0
         },
         "maxRecentFilings": {
-            "title": "Max recent filings (resolve_entity)",
+            "title": "Max recent filings",
             "type": "integer",
             "description": "Number of recent filings to include in resolve_entity output (1-100).",
             "default": 10,
             "minimum": 1,
             "maximum": 100
         },
-        "namespaces": {
-            "title": "XBRL namespaces (facts)",
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "Filter company facts by namespaces (e.g., us-gaap)."
-        },
-        "concepts": {
-            "title": "XBRL concepts",
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "Filter company facts by concept names."
-        },
-        "periodType": {
-            "title": "Period type",
-            "type": "string",
-            "enum": ["instant", "duration"],
-            "description": "Filter facts by period type (instant or duration)."
-        },
-        "userAgent": {
-            "title": "Custom User-Agent (SEC required)",
-            "type": "string",
-            "description": "SEC requires a User-Agent header. Format: 'Your Name YourEmail@example.com'."
-        },
         "includeAmendments": {
-            "title": "Include amended forms (*/A)",
+            "title": "Include amended filings",
             "type": "boolean",
-            "description": "Whether to include amended filings (forms ending in /A).",
+            "description": "Include amended filings (forms ending in /A such as 10-K/A). Set to false to exclude amendments.",
             "default": true
         },
         "formPrefix": {
             "title": "Form prefix filter",
             "type": "string",
-            "description": "Optional prefix to filter forms (e.g., '10-' matches 10-K, 10-Q)."
+            "description": "Filter by form prefix (e.g., '10-' matches 10-K, 10-Q, 10-K/A).",
+            "editor": "textfield"
+        },
+        "namespaces": {
+            "sectionCaption": "XBRL Filters (Facts Mode)",
+            "sectionDescription": "Filters for get_company_facts mode. Narrow results by XBRL namespace, concept, or period type.",
+            "title": "XBRL namespaces",
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Filter facts by XBRL namespace (e.g., us-gaap, dei, ifrs-full). Leave empty for all."
+        },
+        "concepts": {
+            "title": "XBRL concepts",
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Filter facts by concept name (e.g., Revenue, Assets, NetIncomeLoss). Leave empty for all."
+        },
+        "periodType": {
+            "title": "Period type",
+            "type": "string",
+            "enum": ["instant", "duration"],
+            "description": "Filter facts by period type: 'instant' (balance sheet) or 'duration' (income statement).",
+            "editor": "select",
+            "enumTitles": ["Instant (balance sheet date)", "Duration (reporting period)"]
+        },
+        "userAgent": {
+            "sectionCaption": "Advanced Settings",
+            "sectionDescription": "Configure SEC access and request behavior.",
+            "title": "User-Agent (SEC required)",
+            "type": "string",
+            "description": "SEC requires a User-Agent header on all requests. Format: 'YourName your-email@example.com'.",
+            "editor": "textfield"
         },
         "requestIntervalSecs": {
             "title": "Request interval (seconds)",
             "type": "number",
-            "description": "Minimum interval between HTTP requests to SEC (default 0.3s).",
+            "description": "Minimum seconds between requests to SEC. Lower values are faster but risk rate limiting.",
             "default": 0.3,
             "minimum": 0.1,
             "maximum": 5
@@ -113,7 +136,7 @@
         "timeoutSecs": {
             "title": "HTTP timeout (seconds)",
             "type": "integer",
-            "description": "HTTP request timeout in seconds.",
+            "description": "Timeout for each HTTP request to SEC EDGAR.",
             "default": 30,
             "minimum": 5,
             "maximum": 120
@@ -121,7 +144,7 @@
         "maxRetries": {
             "title": "Max retries",
             "type": "integer",
-            "description": "Maximum number of retries on failed requests.",
+            "description": "Maximum retry attempts on failed or rate-limited requests.",
             "default": 5,
             "minimum": 0,
             "maximum": 10

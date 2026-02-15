@@ -1,74 +1,337 @@
 # SEC EDGAR Entity Resolver
 
-Resolve companies to SEC CIKs, search filings, and pull XBRL facts from EDGAR. No API key required.
+Resolve companies to SEC CIK numbers, search SEC filings, and extract structured XBRL financial facts from EDGAR. No API key required.
 
 ## What does it do?
 
-This actor provides three EDGAR utilities in one:
-- **Resolve entities**: Company name/ticker/CIK → normalized entity profile (CIK, SIC, addresses, fiscal year end, tickers, former names) plus recent filings.
-- **Search filings**: Full-text filing search with form/date filters and direct links to filings and primary documents.
-- **Get company facts**: Structured XBRL facts by CIK with optional namespace/concept/period filters.
+SEC EDGAR Entity Resolver turns company names, stock tickers, and CIK numbers into structured SEC data. It queries the SEC's public EDGAR APIs and returns clean, normalized results ready for analysis, compliance workflows, or AI agent consumption.
+
+**Use cases:**
+
+- **Entity resolution** -- ground company names to official SEC identifiers (CIK numbers) for downstream data pipelines
+- **Due diligence** -- pull company profiles with SIC codes, addresses, fiscal year end, and filing history
+- **Compliance monitoring** -- search SEC filings by form type, date range, and keyword to track regulatory submissions
+- **Financial analysis** -- extract structured XBRL facts (revenue, assets, liabilities) from company filings
+- **AI agent tooling** -- expose as an MCP tool so AI agents can look up SEC data in real time
+- **Investment research** -- monitor 10-K, 10-Q, 8-K, and other filings for companies or industries
 
 ## Features
 
 - **3 modes:** `resolve_entity`, `search_filings`, `get_company_facts`
-- **No API key required** — public SEC data
-- **Polite rate limiting** — default 0.3s between requests; retry/backoff on 429/5xx
-- **Ticker preload** — uses SEC `company_tickers.json` for ticker→CIK mapping
-- **State persistence** — survives Apify actor migrations mid-run
-- **Batch push** — outputs in batches of 25
-- **Free tier** — caps to 25 results when running on Apify without a paid user
+- **No API key required** -- all data comes from public SEC EDGAR endpoints
+- **No proxies needed** -- direct API access to government infrastructure
+- **Ticker preload** -- loads SEC `company_tickers.json` for fast ticker-to-CIK resolution
+- **Polite rate limiting** -- default 0.3s between requests; retry with exponential backoff on 429/5xx
+- **State persistence** -- survives Apify actor migrations mid-run
+- **Batch push** -- outputs in batches of 25 for efficiency
+- **Free tier** -- 25 results per run without a subscription
+
+## What data does it extract?
+
+### Entities (resolve_entity)
+
+| Field | Description |
+|-------|-------------|
+| `type` | Always `"entity"` |
+| `cik` | 10-digit SEC CIK number |
+| `name` | Official company name |
+| `tickers` | Stock ticker symbols |
+| `sic` | SIC industry code |
+| `sicDescription` | SIC industry description |
+| `state` | State of incorporation |
+| `country` | Country of incorporation |
+| `fiscalYearEnd` | Fiscal year end (MMDD) |
+| `mailingAddress` | Mailing address |
+| `businessAddress` | Business address |
+| `formerNames` | Previous company names |
+| `recentFilings` | Recent SEC filings (form, date, accession number, URLs) |
+| `sourceUrls` | SEC API URLs used |
+
+### Filings (search_filings)
+
+| Field | Description |
+|-------|-------------|
+| `type` | Always `"filing"` |
+| `cik` | Filer CIK number |
+| `name` | Filer name |
+| `tickers` | Filer ticker symbols |
+| `form` | Form type (10-K, 10-Q, 8-K, etc.) |
+| `fileDate` | Filing date |
+| `acceptanceDatetime` | SEC acceptance timestamp |
+| `accessionNumber` | Unique filing accession number |
+| `filingUrl` | Link to filing index page |
+| `primaryDocumentUrl` | Link to primary document |
+| `items` | Filing items (for 8-K) |
+| `state` | Filer state |
+| `sic` | Filer SIC code |
+| `sicDescription` | Filer SIC description |
+
+### Facts (get_company_facts)
+
+| Field | Description |
+|-------|-------------|
+| `type` | Always `"fact"` |
+| `cik` | Company CIK number |
+| `name` | Company name |
+| `sic` | SIC code |
+| `concept` | XBRL concept name (e.g., `Revenue`, `Assets`) |
+| `namespace` | XBRL namespace (e.g., `us-gaap`) |
+| `label` | Human-readable concept label |
+| `unit` | Unit of measurement (e.g., `USD`, `shares`) |
+| `value` | Reported value |
+| `start` | Period start date (duration facts) |
+| `end` | Period end date |
+| `form` | Source form type |
+| `frame` | XBRL reporting frame (e.g., `CY2025Q1`) |
+| `filingUrl` | Link to source filing |
+
+---
 
 ## Input
 
+### Mode 1: Resolve Entity
+
+Resolve a company name, ticker, or CIK to a full SEC entity profile with recent filings.
+
 ```json
 {
-  "mode": "resolve_entity",
-  "query": "NVIDIA",
-  "maxRecentFilings": 10,
-  "requestIntervalSecs": 0.3
+    "mode": "resolve_entity",
+    "query": "NVIDIA",
+    "maxRecentFilings": 10,
+    "userAgent": "YourName your-email@example.com"
 }
 ```
 
-### Common fields
-- `mode`: `resolve_entity` | `search_filings` | `get_company_facts`
-- `query`: Company name/ticker/CIK for resolve; text for filings search
-- `cik`: 10-digit CIK (unpadded accepted)
-- `ticker`: Stock ticker
-- `maxResults`: Default 100 (capped to 25 on free tier)
-- `requestIntervalSecs`: Default 0.3s between requests
-- `timeoutSecs`: Default 30
-- `maxRetries`: Default 5
+Resolve by ticker:
 
-### resolve_entity
-- `query`, `ticker`, or `cik` (one required)
-- `maxRecentFilings`: default 10 (1–100)
-- `includeAmendments`: default true
-- `formPrefix`: optional prefix filter (e.g., `10-`)
+```json
+{
+    "mode": "resolve_entity",
+    "ticker": "AAPL",
+    "maxRecentFilings": 5,
+    "userAgent": "YourName your-email@example.com"
+}
+```
 
-### search_filings
-- `query`: text search
-- `cik` or `ticker`: optional; narrows results
-- `formTypes`: list of forms (e.g., `10-K`, `10-Q`, `8-K`)
-- `formPrefix`: optional prefix (e.g., `10-`)
-- `includeAmendments`: default true (if false, filters `*/A`)
-- `dateFrom` / `dateTo`: YYYY-MM-DD
-- `start`: offset; `maxResults`: cap (default 100, hard cap 1000; free tier 25)
+### Mode 2: Search Filings
 
-### get_company_facts
-- `cik` or `ticker`: required
-- Optional filters: `namespaces` (e.g., `us-gaap`), `concepts`, `periodType` (`instant` | `duration`)
+Search SEC filings by keyword, company, form type, and date range.
+
+```json
+{
+    "mode": "search_filings",
+    "query": "artificial intelligence",
+    "formTypes": ["10-K", "10-Q"],
+    "dateFrom": "2025-01-01",
+    "dateTo": "2026-01-01",
+    "maxResults": 100,
+    "userAgent": "YourName your-email@example.com"
+}
+```
+
+Search by ticker and form prefix:
+
+```json
+{
+    "mode": "search_filings",
+    "ticker": "TSLA",
+    "formPrefix": "8-",
+    "maxResults": 50,
+    "userAgent": "YourName your-email@example.com"
+}
+```
+
+### Mode 3: Get Company Facts
+
+Pull structured XBRL financial data for a company.
+
+```json
+{
+    "mode": "get_company_facts",
+    "ticker": "MSFT",
+    "namespaces": ["us-gaap"],
+    "concepts": ["Revenue", "Assets"],
+    "maxResults": 200,
+    "userAgent": "YourName your-email@example.com"
+}
+```
+
+### Input Reference
+
+**Common fields:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `mode` | `resolve_entity` | `resolve_entity`, `search_filings`, or `get_company_facts` |
+| `query` | | Company name, ticker, CIK, or search text |
+| `cik` | | 10-digit CIK (zero-padded if shorter) |
+| `ticker` | | Stock ticker symbol |
+| `userAgent` | | SEC-required User-Agent: `"YourName email@example.com"` |
+| `maxResults` | `100` | Max results (1-1000; free tier capped at 25) |
+| `requestIntervalSecs` | `0.3` | Seconds between requests |
+| `timeoutSecs` | `30` | HTTP timeout |
+| `maxRetries` | `5` | Retries on failure |
+
+**resolve_entity fields:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `maxRecentFilings` | `10` | Recent filings to include (1-100) |
+| `includeAmendments` | `true` | Include amended forms (*/A) |
+| `formPrefix` | | Filter filings by prefix (e.g., `10-`) |
+
+**search_filings fields:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `formTypes` | | List of forms: `10-K`, `10-Q`, `8-K`, etc. |
+| `formPrefix` | | Prefix filter (e.g., `10-` matches 10-K, 10-Q) |
+| `includeAmendments` | `true` | Include amended forms (*/A) |
+| `dateFrom` | | Filed on or after (YYYY-MM-DD) |
+| `dateTo` | | Filed on or before (YYYY-MM-DD) |
+| `start` | `0` | Pagination offset |
+
+**get_company_facts fields:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `namespaces` | | XBRL namespaces (e.g., `us-gaap`, `dei`) |
+| `concepts` | | Concept names (e.g., `Revenue`, `Assets`) |
+| `periodType` | | `instant` or `duration` |
+
+---
 
 ## Output
 
-- `resolve_entity`: type=`entity`, `cik`, `name`, `tickers`, `sic`, `sicDescription`, `state`, `country`, `fiscalYearEnd`, `mailingAddress`, `businessAddress`, `formerNames`, `recentFilings` (form, fileDate, accessionNumber, filingUrl, primaryDocumentUrl), `sourceUrls`.
-- `search_filings`: type=`filing`, `cik`, `name`, `tickers`, `form`, `fileDate`, `acceptanceDatetime`, `accessionNumber`, `filingUrl`, `primaryDocumentUrl`, `items`, `state`, `sic`, `sicDescription`.
-- `get_company_facts`: type=`fact`, `cik`, `name`, `sic`, `concept`, `namespace`, `label`, `unit`, `value`, `start`, `end`, `form`, `frame`, `filingUrl`.
+Results are saved to the default dataset. Download them in JSON, CSV, Excel, or XML from the Output tab.
 
-## Pricing
+### Example: Entity output
 
-- `$0.0005/result` with a **free tier of 25 results per run** on Apify.
+```json
+{
+    "type": "entity",
+    "cik": "0001045810",
+    "name": "NVIDIA CORP",
+    "tickers": ["NVDA"],
+    "sic": "3674",
+    "sicDescription": "Semiconductors & Related Devices",
+    "state": "DE",
+    "country": "US",
+    "fiscalYearEnd": "0128",
+    "mailingAddress": {"street1": "2788 SAN TOMAS EXPRESSWAY", "city": "SANTA CLARA", "state": "CA", "zip": "95051"},
+    "businessAddress": {"street1": "2788 SAN TOMAS EXPRESSWAY", "city": "SANTA CLARA", "state": "CA", "zip": "95051"},
+    "formerNames": [],
+    "recentFilings": [
+        {
+            "form": "10-K",
+            "fileDate": "2026-02-01",
+            "accessionNumber": "0001045810-26-000123",
+            "filingUrl": "https://www.sec.gov/Archives/edgar/data/...",
+            "primaryDocumentUrl": "https://www.sec.gov/Archives/edgar/data/..."
+        }
+    ],
+    "sourceUrls": ["https://data.sec.gov/submissions/CIK0001045810.json"]
+}
+```
 
-## MCP note
+### Example: Filing output
 
-Any Apify actor can be exposed as an MCP tool via `https://mcp.apify.com?tools=<actor-id>` with `Authorization: Bearer <APIFY_TOKEN>`. This actor follows the same pattern; no custom server needed. Rate limit remains ~30 req/s per user; keep the default 0.3s interval unless you know you need more throughput.
+```json
+{
+    "type": "filing",
+    "cik": "0001318605",
+    "name": "TESLA INC",
+    "tickers": ["TSLA"],
+    "form": "8-K",
+    "fileDate": "2026-01-15",
+    "accessionNumber": "0001318605-26-000456",
+    "filingUrl": "https://www.sec.gov/Archives/edgar/data/...",
+    "primaryDocumentUrl": "https://www.sec.gov/Archives/edgar/data/...",
+    "items": ["2.02", "9.01"]
+}
+```
+
+### Example: Fact output
+
+```json
+{
+    "type": "fact",
+    "cik": "0000789019",
+    "name": "MICROSOFT CORP",
+    "concept": "Revenue",
+    "namespace": "us-gaap",
+    "label": "Revenue from Contract with Customer, Excluding Assessed Tax",
+    "unit": "USD",
+    "value": 56189000000,
+    "start": "2025-07-01",
+    "end": "2025-09-30",
+    "form": "10-Q",
+    "frame": "CY2025Q3",
+    "filingUrl": "https://www.sec.gov/Archives/edgar/data/..."
+}
+```
+
+---
+
+## Cost
+
+This actor uses **pay-per-event (PPE) pricing**. You pay only for the results you get.
+
+- **$0.50 per 1,000 results** ($0.0005 per result)
+- **No proxy costs** -- public government APIs
+- **No API key costs** -- SEC EDGAR is free and public
+- Free tier: **25 results per run** (no subscription required)
+
+---
+
+## Technical details
+
+- SEC EDGAR EFTS API (`efts.sec.gov/LATEST/search-index`) for full-text filing search
+- SEC EDGAR Submissions API (`data.sec.gov/submissions/`) for entity profiles and recent filings
+- SEC EDGAR XBRL CompanyFacts API (`data.sec.gov/api/xbrl/companyfacts/`) for structured financial data
+- SEC company tickers file (`sec.gov/files/company_tickers.json`) preloaded for fast ticker resolution
+- SEC requires a `User-Agent` header with name and email on all requests
+- Rate limited to 1 request per 0.3 seconds (configurable)
+- Automatic retry with exponential backoff and jitter on failures
+- Results pushed in batches of 25 for efficiency
+- Actor state persisted across migrations
+- No proxies, no browser, no cookies -- direct API access
+
+---
+
+## MCP integration
+
+This actor works as an MCP tool through Apify's hosted MCP server. No custom server needed.
+
+- Endpoint: `https://mcp.apify.com?tools=<your-actor-id>`
+- Auth: `Authorization: Bearer <APIFY_TOKEN>`
+- Transport: Streamable HTTP
+- Works with: Claude Desktop, Cursor, VS Code, Windsurf, Warp, Gemini CLI
+
+AI agents can use this actor to resolve company names to CIK numbers, search SEC filings, and pull structured financial data -- all in real time.
+
+---
+
+## FAQ
+
+### Do I need an API key?
+
+No. SEC EDGAR is a public government data source with no authentication. You do need to provide a `User-Agent` header (name and email) per SEC's fair access policy.
+
+### What is a CIK?
+
+A Central Index Key (CIK) is the SEC's unique identifier for every entity that files with the commission. Think of it as an SEC serial number for companies.
+
+### Can I combine filters?
+
+Yes. For filing search, combine keyword + form types + date range + ticker/CIK. All filters are AND-combined.
+
+### What XBRL namespaces are available?
+
+The most common are `us-gaap` (US financial reporting standards) and `dei` (document and entity information). Some companies also report under `ifrs-full` (international standards).
+
+---
+
+## Feedback
+
+Found a bug or have a feature request? Open an issue on the actor's Issues tab in Apify Console.
