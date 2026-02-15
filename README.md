@@ -1,10 +1,10 @@
 # SEC EDGAR Entity Resolver
 
-Resolve companies to SEC CIK numbers, search SEC filings, and extract structured XBRL financial facts from EDGAR. No API key required.
+Resolve companies to SEC CIK numbers, search SEC filings, and extract structured XBRL financial facts from EDGAR. No API key required. MCP-ready for AI agent integration.
 
 ## What does it do?
 
-SEC EDGAR Entity Resolver turns company names, stock tickers, and CIK numbers into structured SEC data. It queries the SEC's public EDGAR APIs and returns clean, normalized results ready for analysis, compliance workflows, or AI agent consumption.
+SEC EDGAR Entity Resolver turns company names, stock tickers, and CIK numbers into structured SEC data. It queries the SEC's public EDGAR APIs and returns clean, normalized results ready for analysis, compliance workflows, or AI agent consumption via MCP.
 
 **Use cases:**
 
@@ -310,16 +310,31 @@ This actor uses **pay-per-event (PPE) pricing**. You pay only for the results yo
 
 ---
 
-## MCP integration
+## MCP Integration
 
 This actor works as an MCP tool through Apify's hosted MCP server. No custom server needed.
 
-- Endpoint: `https://mcp.apify.com?tools=<your-actor-id>`
-- Auth: `Authorization: Bearer <APIFY_TOKEN>`
-- Transport: Streamable HTTP
-- Works with: Claude Desktop, Cursor, VS Code, Windsurf, Warp, Gemini CLI
+- **Endpoint:** `https://mcp.apify.com?tools=labrat011/sec-edgar-scraper`
+- **Auth:** `Authorization: Bearer <APIFY_TOKEN>`
+- **Transport:** Streamable HTTP
+- **Works with:** Claude Desktop, Cursor, VS Code, Windsurf, Warp, Gemini CLI
 
-AI agents can use this actor to resolve company names to CIK numbers, search SEC filings, and pull structured financial data -- all in real time.
+**Example MCP config (Claude Desktop / Cursor):**
+
+```json
+{
+    "mcpServers": {
+        "sec-edgar-scraper": {
+            "url": "https://mcp.apify.com?tools=labrat011/sec-edgar-scraper",
+            "headers": {
+                "Authorization": "Bearer <APIFY_TOKEN>"
+            }
+        }
+    }
+}
+```
+
+AI agents can use this actor to resolve company names to CIK numbers, search SEC filings, and pull structured XBRL financial data -- all as a callable MCP tool.
 
 ---
 
