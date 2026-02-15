@@ -1,0 +1,12 @@
+{
+    "actorOutputSchemaVersion": 1,
+    "title": "AI/ML Intelligence Scraper Results",
+    "description": "AI/ML models from HuggingFace Hub and research papers from arXiv and HuggingFace Daily Papers.",
+    "properties": {
+        "results": {
+            "type": "string",
+            "title": "Results",
+            "template": "{{links.apiDefaultDatasetUrl}}/items"
+        }
+    }
+}
