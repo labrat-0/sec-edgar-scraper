@@ -90,6 +90,117 @@ SEC EDGAR Entity Resolver turns company names, stock tickers, and CIK numbers in
 
 ---
 
+## 👥 Who Uses This
+
+### 📈 Financial Analysts & Investment Researchers
+
+The most common workflow: pull annual reports for a company, compare performance across competitors, track how a metric has changed quarter over quarter. All three modes serve this directly.
+
+- Resolve a company name or ticker to its CIK, then pull recent 10-K and 10-Q filings with direct URLs to the primary documents
+- Search across an industry by keyword to find all companies disclosing a specific risk factor or business change
+- Compare revenue, gross profit, and operating income across multiple companies using `get_company_facts` with specific XBRL concepts
+
+```json
+{
+    "mode": "search_filings",
+    "query": "artificial intelligence revenue",
+    "formTypes": ["10-K"],
+    "dateFrom": "2024-01-01",
+    "dateTo": "2026-01-01",
+    "maxResults": 100,
+    "userAgent": "YourName your-email@example.com"
+}
+```
+
+### 📊 Quant Traders & Hedge Funds
+
+XBRL financial facts are machine-readable, time-stamped, and directly comparable across companies. The `get_company_facts` mode returns structured time series — no PDF parsing required.
+
+- Pull quarterly Revenue, Assets, and Liabilities time series for a company going back years
+- Extract EPS, shares outstanding, or debt-to-equity ratios as structured data for modeling
+- Cross-reference 8-K material event filings against price movement data for event-driven strategies
+
+```json
+{
+    "mode": "get_company_facts",
+    "ticker": "NVDA",
+    "namespaces": ["us-gaap"],
+    "concepts": ["Revenues", "Assets", "LiabilitiesAndStockholdersEquity"],
+    "maxResults": 500,
+    "userAgent": "YourName your-email@example.com"
+}
+```
+
+### ⚖️ Compliance & Legal Teams
+
+Monitoring companies for material events, regulatory disclosures, and insider transactions requires catching 8-K and other filings as they land. This actor can be scheduled to run daily.
+
+- Monitor a specific company for all 8-K material event filings — acquisitions, leadership changes, earnings, legal proceedings
+- Search proxy statements (DEF 14A) and annual reports for specific disclosure language
+- Track amendment filings (10-K/A, 8-K/A) to identify when companies are restating prior disclosures
+
+```json
+{
+    "mode": "search_filings",
+    "ticker": "META",
+    "formTypes": ["8-K", "8-K/A"],
+    "dateFrom": "2025-01-01",
+    "maxResults": 200,
+    "userAgent": "YourName your-email@example.com"
+}
+```
+
+### 🗞️ Investigative Journalists
+
+Full-text keyword search across all SEC filings is one of EDGAR's most powerful but least accessible features. This actor exposes it as a simple JSON call.
+
+- Search for a specific phrase across all public SEC filings to find which companies mentioned it
+- Track disclosures around a breaking story — find every company that mentioned a specific risk, event, or name
+- Pull a company's full filing history to trace a timeline of disclosures around a specific issue
+
+```json
+{
+    "mode": "search_filings",
+    "query": "climate transition risk stranded assets",
+    "formTypes": ["10-K"],
+    "dateFrom": "2023-01-01",
+    "maxResults": 200,
+    "userAgent": "YourName your-email@example.com"
+}
+```
+
+### 🤖 AI/LLM Engineers
+
+SEC filings are dense, authoritative, and structured — ideal source material for financial AI agents and RAG pipelines. The entity resolution mode is especially useful as a first step in any company-focused pipeline.
+
+- Resolve a company name to its CIK programmatically — necessary before any downstream EDGAR API calls
+- Use via MCP so AI agents can look up company filings in real time from a natural language prompt
+- Pull XBRL facts as structured financial context before generating analysis, summaries, or comparison reports
+
+```json
+{
+    "mode": "resolve_entity",
+    "query": "OpenAI",
+    "maxRecentFilings": 20,
+    "userAgent": "YourName your-email@example.com"
+}
+```
+
+---
+
+## 🔗 Related Actors
+
+Other actors from the same portfolio that pair well with SEC EDGAR data:
+
+| Actor | What It Does |
+|---|---|
+| [Government Contracts Scraper](https://apify.com/labrat011/gov-contracts-scraper) | Federal contract awards from SAM.gov — research what government contracts awardees have won |
+| [Academic Paper Scraper](https://apify.com/labrat011/academic-paper-scraper) | Research papers from ArXiv and Semantic Scholar — pair with EDGAR for tech company R&D analysis |
+| [Reddit Scraper](https://apify.com/labrat011/reddit-scraper) | Retail investor sentiment from Reddit — cross-reference with SEC filings for market signal research |
+| [NPI Provider Contact Finder](https://apify.com/labrat011/npi-provider-contact-finder) | Healthcare provider data — pairs with SEC filings research on pharma and healthcare companies |
+
+---
+
 ## Input
 
 ### Mode 1: Resolve Entity
